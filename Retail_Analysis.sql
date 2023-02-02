@@ -4,7 +4,10 @@
 --
 /*          Retail Table Creation       */
     -- DROP TABLE IF EXISTS Retail;
-    -- SELECT OrderID, OrderDate, O.ProductID, ProductName, ProductCategory, Quantity, Price, (Quantity * Price) Revenue, O.PropertyID, PropertyCity, PropertyState
+    -- SELECT OrderID, OrderDate, O.ProductID,
+    --     ProductName, ProductCategory,
+    --     Quantity, Price, (Quantity * Price) Revenue,
+    --     O.PropertyID, PropertyCity, PropertyState
     -- -- INTO Retail
     -- FROM OrderDetails O
     -- LEFT JOIN Products P
@@ -129,7 +132,7 @@
             (SELECT COUNT(OrderID) FROM retail r1 WHERE DATEPART(yy,OrderDate) = '2016' AND r. ProductCategory = r1.ProductCategory) [2016]
             FROM retail r) q
 --
-/*      Top n Products per Product Category      */
+/*      Top n Products per Product Category         */
     -- Top Products per Category
         SELECT DISTINCT ProductCategory,
         FIRST_VALUE(Revenue) OVER(PARTITION BY ProductCategory ORDER BY Revenue DESC) Revenue,
@@ -168,6 +171,41 @@
         CONCAT('%',CAST (COUNT(OrderID) OVER (PARTITION BY ProductCategory, ProductName) * 100.0/
         COUNT(OrderID) OVER (PARTITION BY ProductCategory) AS DEC(10,2))) Order_Percentage
         FROM retail
-        ORDER BY ProductCategory, Order_Percentage DESC
+        ORDER BY ProductCategory, Order_Percentage DESC;
+--
+/*      Stored Procedures                           */
+    -- Average Revenue per Segment
+        CREATE OR ALTER PROCEDURE sp_Avg_Revenue (@segment nvarchar(15))
+        AS
+        BEGIN
+            DECLARE @sql NVARCHAR(600); 
+            SET @sql = 'SELECT DISTINCT ' + @segment +', 
+            CAST(AVG(Revenue * 1.0) OVER(PARTITION BY ' + @segment + ' ) AS DEC(10,2)) AvgRevenue,
+            COUNT(OrderID) OVER(PARTITION BY ' + @segment + ' ) Orders 
+            FROM retail ORDER BY AvgRevenue DESC'
+            EXEC sp_executesql @sql
+        END
+        GO
 
-/*               Stored Procedures               */
+        EXEC SP_Avg_Revenue 'PropertyState'
+        GO
+    -- Revenue per Order with Percentage Split
+        CREATE OR ALTER PROCEDURE sp_Percentage_split @segment NVARCHAR(15)
+        AS
+        BEGIN
+            DECLARE @sql NVARCHAR(1000)
+            SET @sql = 'SELECT COALESCE( ' + @segment + ', ' + quotename('Total','''') + ') Segment, SUM(Revenue) Revenue, 
+                        CONCAT( ' + quotename('%','''') + ' , CAST((SUM(Revenue) *100.0)/(SELECT SUM(Revenue) FROM retail) AS DEC(10,2))) Revenue_Percentage,
+                        SUM(Quantity) Quantity,
+                        CONCAT( ' + quotename('%','''') + ' , CAST((SUM(Quantity) *100.0)/(SELECT SUM(Quantity) FROM retail) AS DEC(10,2))) Quantity_Percentage,
+                        COUNT(OrderID) Transactions,
+                        CONCAT( ' + quotename('%','''') + ' , CAST((COUNT(OrderID)*100.0)/(SELECT COUNT(OrderID) FROM retail) AS DEC(10,2))) Txn_Percentage
+                        FROM retail
+                        GROUP BY ' + @segment +  
+                        ' ORDER BY Revenue_Percentage DESC'
+            EXEC sp_executesql @sql
+        END
+        GO
+
+        EXEC sp_Percentage_split 'PropertyState'
+
