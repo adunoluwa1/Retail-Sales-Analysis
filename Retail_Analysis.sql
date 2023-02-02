@@ -4,14 +4,13 @@
 --
 /*          Retail Table Creation       */
     -- DROP TABLE IF EXISTS Retail;
-    -- -- CREATE TABLE Retail AS
     -- SELECT OrderID, OrderDate, O.ProductID, ProductName, ProductCategory, Quantity, Price, (Quantity * Price) Revenue, O.PropertyID, PropertyCity, PropertyState
     -- -- INTO Retail
     -- FROM OrderDetails O
     -- LEFT JOIN Products P
     -- ON o.productid = p.productid
     -- LEFT JOIN Propertyinfo I
-    -- ON o.propertyid = i.propertyid
+    -- ON o.propertyid = i.propertyid;
 
 
     -- SELECT DISTINCT PropertyState, ProductCategory, SUM(Revenue) 
@@ -21,7 +20,7 @@
     -- ORDER BY Revenue DESC
 --
 /*      Total Revenue and Quantity per Segment      */
-    -- By ProductCategory
+    -- By Category
         SELECT COALESCE(ProductCategory,'Total') ProductCategory, SUM(Revenue) Revenue, 
         CONCAT('%',CAST((SUM(Revenue) *100.0)/(SELECT SUM(Revenue) FROM retail) AS DEC(10,2))) Revenue_Percentage,
         SUM(Quantity) Quantity,
@@ -31,14 +30,16 @@
         ORDER BY Revenue_Percentage DESC
         --OFFSET 1 ROWS 
 
-    -- By PropertyState
-        SELECT COALESCE(PropertyState,'Total') PropertyState, SUM(Revenue) Revenue, 
-        CAST((SUM(Revenue) *100.0)/(SELECT SUM(Revenue) FROM retail) AS DEC(10,2)) Revenue_Percentage,
+    -- By State
+        SELECT 
+        COALESCE(PropertyState,'Total') PropertyState,
+        SUM(Revenue) Revenue, 
+        CONCAT('%', CAST((SUM(Revenue) *100.0)/(SELECT SUM(Revenue) FROM retail) AS DEC(10,2))) Revenue_Percentage,
         SUM(Quantity) Quantity,
-        CAST((SUM(Quantity) *100.0)/(SELECT SUM(Quantity) FROM retail) AS DEC(10,2)) Quantity_Percentage
+        CONCAT('%', CAST((SUM(Quantity) *100.0)/(SELECT SUM(Quantity) FROM retail) AS DEC(10,2))) Quantity_Percentage
         FROM retail
-        GROUP BY PropertyState --WITH ROLLUP
-        ORDER BY Revenue_Percentage DESC
+        GROUP BY PropertyState WITH ROLLUP
+        ORDER BY Revenue DESC
         --OFFSET 1 ROWS 
 
     -- By Number of Orders
@@ -57,7 +58,29 @@
         GROUP BY DATEPART(m,OrderDate), DATENAME(m,OrderDate)
         ORDER BY DATEPART(m,OrderDate);
 --
-/*      Revenue Growth between 2015 and 2016      */
+/*      Avg. Revenue per Segment                    */
+    -- Shows which segment ordered higher quantities of the product
+    -- By Product Category
+        SELECT DISTINCT ProductCategory,
+        CAST(AVG(Revenue * 1.0) OVER(PARTITION BY ProductCategory) AS DEC(10,2)) AvgRevenue
+        FROM Retail
+        ORDER BY AvgRevenue DESC
+
+    -- By State
+        SELECT DISTINCT PropertyState,
+        CAST(AVG(Revenue * 1.0) OVER(PARTITION BY PropertyState) AS DEC(10,2)) AvgRevenue
+        FROM Retail
+        ORDER BY AvgRevenue DESC
+    
+    -- By State and Product Category
+        SELECT PropertyState State, ProductCategory, 
+        CAST(AVG(Revenue * 1.0) AS DEC(10,2)) AvgRevenue,
+        COUNT(OrderID) Orders
+        FROM retail
+        GROUP BY PropertyState, ProductCategory
+        ORDER BY State
+--
+/*      Revenue Growth between 2015 and 2016        */
     -- Using Window Functions
         -- CREATE OR ALTER VIEW Growth AS
         -- (SELECT DISTINCT(ProductCategory) ProductCategory, Revenue [2015],
@@ -86,7 +109,7 @@
         FROM CTE
 
 --
-/*      Order Growth between 2015 and 2016       */
+/*      Order Growth between 2015 and 2016          */
     -- Using Case Statements
         SELECT ProductCategory, SUM([2015]) [2015], SUM([2016]) [2016], 
         CONCAT('%',CAST((SUM([2016])-SUM([2015]))*100.0/SUM([2015]) AS DEC(10,2))) Order_Growth
@@ -147,3 +170,4 @@
         FROM retail
         ORDER BY ProductCategory, Order_Percentage DESC
 
+/*               Stored Procedures               */
