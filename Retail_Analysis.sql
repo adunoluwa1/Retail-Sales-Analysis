@@ -236,3 +236,23 @@
 
         EXEC sp_Order_Growth 'PropertyState'
         GO
+  
+    -- Revenue growth between 2015 and 2016
+        CREATE OR ALTER PROCEDURE sp_Revenue_Growth @segment NVARCHAR(15)
+        AS 
+        BEGIN
+            DECLARE @sql NVARCHAR(1000)
+            SET @sql =  'SELECT *, CONCAT( ' + quotename('%','''') + ' ,
+                        CAST((([2016]-[2015]) *100.0)/[2015] AS DEC(10,2))) Revenue_Growth FROM
+                        (SELECT DISTINCT ' + @segment + ', 
+                        (SELECT SUM(Revenue) FROM retail r1 WHERE DATEPART(yy,OrderDate) = ' 
+                         + quotename('2015','''') + ' AND r.' + @segment + ' = r1.' + @segment + ' ) [2015],
+                        (SELECT SUM(Revenue) FROM retail r1 WHERE DATEPART(yy,OrderDate) = ' 
+                         + quotename('2016','''') + ' AND r.' + @segment + ' = r1.' + @segment + ' ) [2016]
+                        FROM retail r) q'
+            EXEC sp_executesql @sql
+        END
+        GO
+
+        EXEC sp_Revenue_Growth 'ProductCategory'
+        GO
