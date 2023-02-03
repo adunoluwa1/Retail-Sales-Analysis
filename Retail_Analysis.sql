@@ -25,39 +25,47 @@
 /*      Total Revenue and Quantity per Segment      */
     -- By Category
         SELECT COALESCE(ProductCategory,'Total') ProductCategory, SUM(Revenue) Revenue, 
-        CONCAT('%',CAST((SUM(Revenue) *100.0)/(SELECT SUM(Revenue) FROM retail) AS DEC(10,2))) Revenue_Percentage,
+        CONCAT('%',CAST((SUM(Revenue) *100.0)/(SELECT SUM(Revenue) FROM retail) AS DEC(10,2))) Rev_Percentage,
         SUM(Quantity) Quantity,
-        CONCAT('%',CAST((SUM(Quantity) *100.0)/(SELECT SUM(Quantity) FROM retail) AS DEC(10,2))) Quantity_Percentage
+        CONCAT('%',CAST((SUM(Quantity) *100.0)/(SELECT SUM(Quantity) FROM retail) AS DEC(10,2))) Qty_Percentage,
+        COUNT(OrderID) Transactions,
+        CONCAT('%',CAST((COUNT(OrderID)*100.0)/(SELECT COUNT(OrderID) FROM retail) AS DEC(10,2))) Txn_Percentage
         FROM retail
-        GROUP BY ProductCategory --WITH ROLLUP
-        ORDER BY Revenue_Percentage DESC
+        GROUP BY ProductCategory WITH ROLLUP
+        ORDER BY Rev_Percentage DESC
         --OFFSET 1 ROWS 
 
     -- By State
         SELECT 
         COALESCE(PropertyState,'Total') PropertyState,
         SUM(Revenue) Revenue, 
-        CONCAT('%', CAST((SUM(Revenue) *100.0)/(SELECT SUM(Revenue) FROM retail) AS DEC(10,2))) Revenue_Percentage,
+        CONCAT('%', CAST((SUM(Revenue) *100.0)/(SELECT SUM(Revenue) FROM retail) AS DEC(10,2))) Rev_Percentage,
         SUM(Quantity) Quantity,
-        CONCAT('%', CAST((SUM(Quantity) *100.0)/(SELECT SUM(Quantity) FROM retail) AS DEC(10,2))) Quantity_Percentage
+        CONCAT('%', CAST((SUM(Quantity) *100.0)/(SELECT SUM(Quantity) FROM retail) AS DEC(10,2))) Qty_Percentage,
+        COUNT(OrderID) Transactions,
+        CONCAT('%',CAST((COUNT(OrderID)*100.0)/(SELECT COUNT(OrderID) FROM retail) AS DEC(10,2))) Txn_Percentage
         FROM retail
         GROUP BY PropertyState WITH ROLLUP
         ORDER BY Revenue DESC
         --OFFSET 1 ROWS 
 
     -- By Number of Orders
-        SELECT ProductCategory, COUNT(OrderID) Transactions,
-        CONCAT('%',CAST((COUNT(OrderID)*100.0)/(SELECT COUNT(OrderID) FROM retail) AS DEC(10,2))) Txn_Percentage
-        FROM retail
-        GROUP BY ProductCategory
-        ORDER BY Transactions DESC
+        -- SELECT ProductCategory, COUNT(OrderID) Transactions,
+        -- CONCAT('%',CAST((COUNT(OrderID)*100.0)/(SELECT COUNT(OrderID) FROM retail) AS DEC(10,2))) Txn_Percentage
+        -- FROM retail
+        -- GROUP BY ProductCategory
+        -- ORDER BY Transactions DESC
 
     -- By Date - Month
         SELECT DATEPART(m,OrderDate) idx, DATENAME(m,OrderDate) AS Month, 
-        SUM(Revenue) Revenue, CONCAT('%',CAST((SUM(Revenue)*100.0)/(SELECT SUM(Revenue) FROM retail) AS DEC(10,2))) Revenue_Percentage,
-        SUM(Quantity) Quantity, CONCAT('%',CAST((SUM(Quantity)*100.0)/(SELECT SUM(Quantity) FROM retail) AS DEC(10,2))) Quantity_Percentage
+        SUM(Revenue) Revenue,
+        CONCAT('%',CAST((SUM(Revenue)*100.0)/(SELECT SUM(Revenue) FROM retail) AS DEC(10,2))) Rev_Percentage,
+        SUM(Quantity) Quantity,
+        CONCAT('%',CAST((SUM(Quantity)*100.0)/(SELECT SUM(Quantity) FROM retail) AS DEC(10,2))) Qty_Percentage,
+        COUNT(OrderID) Transactions,
+        CONCAT('%',CAST((COUNT(OrderID)*100.0)/(SELECT COUNT(OrderID) FROM retail) AS DEC(10,2))) Txn_Percentage
         FROM retail
-        -- WHERE DATEPART(yy,OrderDate) = '2016'
+        -- WHERE DATEPART(yy,OrderDate) = '@year'
         GROUP BY DATEPART(m,OrderDate), DATENAME(m,OrderDate)
         ORDER BY DATEPART(m,OrderDate);
 --
@@ -97,7 +105,7 @@
         WHERE [2016] IS NOT NULL;
 
     -- Using Pivot function 
-        WITH CTE AS
+        WITH Pivot_CTE AS
          (SELECT *
           FROM
               (SELECT DISTINCT ProductCategory, DATEPART(yy,OrderDate) Year, 
@@ -109,7 +117,7 @@
           ) AS p)
         --
         SELECT *, CONCAT('%',CAST((([2016]-[2015]) *100.0)/[2015] AS DEC(10,2))) Revenue_Growth
-        FROM CTE
+        FROM Pivot_CTE
 
 --
 /*      Order Growth between 2015 and 2016          */
@@ -209,3 +217,22 @@
 
         EXEC sp_Percentage_split 'PropertyState'
 
+    -- Order growth between 2015 and 2016
+        CREATE OR ALTER PROCEDURE sp_Order_Growth @segment NVARCHAR(15)
+        AS 
+        BEGIN
+            DECLARE @sql NVARCHAR(1000)
+            SET @sql =  'SELECT *, CONCAT( ' + quotename('%','''') + ' ,
+                        CAST((([2016]-[2015]) *100.0)/[2015] AS DEC(10,2))) Order_Growth FROM
+                        (SELECT DISTINCT ' + @segment + ', 
+                        (SELECT COUNT(OrderID) FROM retail r1 WHERE DATEPART(yy,OrderDate) = ' 
+                         + quotename('2015','''') + ' AND r.' + @segment + ' = r1.' + @segment + ' ) [2015],
+                        (SELECT COUNT(OrderID) FROM retail r1 WHERE DATEPART(yy,OrderDate) = ' 
+                         + quotename('2016','''') + ' AND r.' + @segment + ' = r1.' + @segment + ' ) [2016]
+                        FROM retail r) q'
+            EXEC sp_executesql @sql
+        END
+        GO
+
+        EXEC sp_Order_Growth 'PropertyState'
+        GO
